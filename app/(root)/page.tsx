@@ -1,13 +1,29 @@
 "use client";
-
+import ProjectForm from "@/modules/home/components/project-form";
 import Image from "next/image";
-import { signIn, signOut, useSession } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
 
 export default function Home() {
-	const { data: session, isPending } = useSession();
-
 	return (
-		<></>
+		<div className="flex items-center justify-center w-full px-4 py-8">
+			<div className="max-w-5xl w-full">
+				<section className="space-y-8 flex flex-col items-center">
+					<div className="flex flex-col items-center">
+						<Image
+							src="/logo.svg"
+							alt="Logo"
+							width={100}
+							height={100}
+							className="hidden md:block invert dark:invert-0"
+						/>
+					</div>
+					<h1 className="text-2xl md:text-5xl font-bold text-center">Build Something With ❤️</h1>
+					<p className="text-lg text-muted-foreground text-center md:text-xl">Create Beautiful Apps and Websites with Ai</p>
+					<div className="max-w-3xl w-full">
+						<ProjectForm />
+					</div>
+				</section>
+				
+			</div>
+		</div>
 	);
 }
