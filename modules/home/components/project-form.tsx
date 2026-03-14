@@ -13,6 +13,7 @@ import { Form, FormField } from "@/components/ui/form";
 
 import React from "react";
 import { ArrowUpIcon, Loader2Icon } from "lucide-react";
+import { onInvoke } from "../actions";
 
 const formSchema = z.object({
 	content: z.string().min(1, "Project Description is Required").max(1000, "Description too long"),
@@ -82,9 +83,22 @@ const ProjectForm = () => {
 		}
 	};
 
+	const onInvokeAi = async () => { 
+		try {
+			const res = await onInvoke();
+			toast.success("AI agent invoked successfully!");
+			console.log(res);
+		} catch (error) {
+			console.error("Error invoking AI agent:", error);
+			toast.error("Failed to invoke AI agent. Please try again.");
+		}
+		
+	}
+
 	return (
 		<div className="space-y-8">
 			{/* Template Section */}
+			<Button onClick={onInvokeAi}>Invoke ai agent</Button>
 			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 				{PROJECT_TEMPLATES.map((template, index) => (
 					<button
