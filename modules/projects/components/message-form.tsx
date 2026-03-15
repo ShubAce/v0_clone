@@ -47,8 +47,8 @@ const MessageForm = ({ projectId }: { projectId: string }) => {
 			<form
 				onSubmit={form.handleSubmit(onSubmit)}
 				className={cn(
-					"relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
-					isFocused && "shadow-lg ring-2 ring-primary/20",
+					"relative border p-4 pt-1 rounded-2xl bg-sidebar dark:bg-sidebar transition-all duration-200",
+					isFocused && "shadow-[0_0_15px_rgba(0,0,0,0.05)] border-primary/30 ring-4 ring-primary/10",
 				)}
 			>
 				<FormField
@@ -63,7 +63,10 @@ const MessageForm = ({ projectId }: { projectId: string }) => {
 							onBlur={() => setIsFocused(false)}
 							minRows={3}
 							maxRows={8}
-							className={cn("pt-4 resize-none border-none w-full outline-none bg-transparent", isPending && "opacity-50")}
+							className={cn(
+								"pt-4 resize-none border-none w-full outline-none bg-transparent placeholder:text-muted-foreground/60 text-[15px] leading-relaxed",
+								isPending && "opacity-50",
+							)}
 							onKeyDown={(e) => {
 								if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 									e.preventDefault();
@@ -74,18 +77,19 @@ const MessageForm = ({ projectId }: { projectId: string }) => {
 					)}
 				/>
 				<div className="flex gap-x-2 items-end justify-between pt-2">
-					<div className="text-[10px] text-muted-foreground font-mono">
-						<kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+					<div className="text-[10px] text-muted-foreground/80 font-medium tracking-tight">
+						<kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground border border-border/50">
 							<span>&#8984;</span>Enter
 						</kbd>
 						&nbsp; to submit
 					</div>
 					<Button
-						className={cn("size-8 rounded-full", isPending && "bg-muted-foreground border")}
+						className={cn("size-8 rounded-full transition-all shrink-0 active:scale-95", isPending && "bg-muted-foreground border")}
 						type="submit"
 						disabled={isPending}
+						size="icon"
 					>
-						{isPending ? <Spinner /> : <ArrowUpIcon className="size-4" />}
+						{isPending ? <Spinner className="size-4" /> : <ArrowUpIcon className="size-4" />}
 					</Button>
 				</div>
 			</form>

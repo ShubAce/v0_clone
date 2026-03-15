@@ -4,10 +4,18 @@ import Sandbox from "@e2b/code-interpreter";
 import z from "zod";
 import { PROMPT } from "@/prompt";
 import { lastAssistantTextMessageContent } from "./utils";
-import { isError } from "util";
 import db from "@/lib/db";
 import { MessageRole, MessageType } from "@/src/generated/enums";
-import { title } from "process";
+
+const buildRecoveryPrompt = (value: unknown) => {
+	const basePrompt = typeof value === "string" ? value : JSON.stringify(value);
+
+	return `${basePrompt}
+
+CRITICAL: Your previous response did not produce a valid completion.
+Use native tool calls only with strict JSON arguments matching the tool schemas.
+Do not output pseudo tool calls as text.`;
+};
 
 export const codeAgentFunction = inngest.createFunction(
 	{ id: "code-agent" },
@@ -192,9 +200,16 @@ export const codeAgentFunction = inngest.createFunction(
 		// First run
 		let result = await network.run(event.data.value);
 
-		const hasSummary = Boolean(result.state.data?.summary);
-		const hasFiles = Object.keys((result.state.data?.files as object) || {}).length > 0;
-		const isError = !result.state.data.summary || Object.keys(result.state.data.files || {}).length === 0;
+		let hasSummary = Boolean(result.state.data?.summary);
+		let hasFiles = Object.keys((result.state.data?.files as object) || {}).length > 0;
+
+		if (!hasSummary || !hasFiles) {
+			result = await network.run(buildRecoveryPrompt(event.data.value));
+			hasSummary = Boolean(result.state.data?.summary);
+			hasFiles = Object.keys((result.state.data?.files as object) || {}).length > 0;
+		}
+
+		const isError = !hasSummary || !hasFiles;
 
 		const sandboxUrl = await step.run("get-sandbox-url", async () => {
 			const sandbox = await Sandbox.connect(sandboxId);
@@ -206,7 +221,7 @@ export const codeAgentFunction = inngest.createFunction(
 				return await db.message.create({
 					data: {
 						projectId: event.data.projectId,
-						content: "Something went wrong. Please try again.",
+						content: "Something went wrong while generating files. Please try again.",
 						role: MessageRole.ASSISTANT,
 						type: MessageType.ERROR,
 					},

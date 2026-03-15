@@ -33,20 +33,18 @@ const FragmentCard = ({
 		<button
 			type="button"
 			className={cn(
-				"flex items-start text-start gap-2 border rounded-lg bg-muted w-fit p-2 hover:bg-secondary transition-colors",
-				isActiveFragment && "bg-primary text-primary-foreground border-primary hover:bg-primary",
+				"flex items-start text-start gap-2 border rounded-lg bg-muted/60 w-fit p-2.5 hover:bg-secondary hover:shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all duration-150",
+				isActiveFragment && "bg-primary text-primary-foreground border-primary hover:bg-primary hover:shadow-primary/20",
 			)}
 			onClick={onFragmentClick}
 		>
-			<Code2Icon className="size-4 mt-0.5" />
-			<div className="flex flex-col flex-1">
+			<Code2Icon className="size-4 mt-0.5 shrink-0" />
+			<div className="flex flex-col flex-1 min-w-0">
 				<span className="text-sm font-medium line-clamp-1">{fragment?.title || "Code Fragment"}</span>
-				<span className="text-sm">Preview</span>
+				<span className="text-xs opacity-70">Preview</span>
 			</div>
-			<div className="flex items-center justify-center mt-0.5">
-				<span>
-					<ChevronRightIcon className="text-sm" />
-				</span>
+			<div className="flex items-center justify-center mt-0.5 shrink-0">
+				<ChevronRightIcon className="size-4" />
 			</div>
 		</button>
 	);
@@ -54,8 +52,10 @@ const FragmentCard = ({
 
 const UserMessage = ({ content }: Pick<MessageCardProps, "content">) => {
 	return (
-		<div className="flex justify-end pb-4 pr-2 pl-10">
-			<Card className={"rounded-lg bg-muted p-2 shadow-none border-none max-w-[80%] wrap-break-word"}>{content}</Card>
+		<div className="flex justify-end pb-4 pr-2 pl-10 sm:pl-16">
+			<Card className="rounded-2xl bg-muted/80 p-3 shadow-none border border-border/50 max-w-[85%] break-words text-sm leading-relaxed">
+				{content}
+			</Card>
 		</div>
 	);
 };
@@ -68,23 +68,26 @@ const AssistantMessage = ({
 	onFragmentClick,
 	type,
 }: Pick<MessageCardProps, "content" | "fragment" | "createdAt" | "isActiveFragment" | "onFragmentClick" | "type">) => {
+	const isError = type === MessageType.ERROR;
 	return (
-		<div className={cn("flex flex-col group px-2 pb-4", type === MessageType.ERROR && "text-red-800 dark:text-red-700")}>
+		<div className={cn("flex flex-col group px-2 pb-4", isError && "text-red-600 dark:text-red-500")}>
 			<div className="flex items-center gap-2 pl-2 mb-2">
-				<Image
-					src={"/logo.svg"}
-					height={30}
-					width={30}
-					alt="V0"
-					className="invert dark:invert-0"
-				/>
-				<span className="text-sm font-medium">V0</span>
-				<span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-					{format(new Date(createdAt), "HH:mm 'on' MMM dd, yyyy")}
+				<div className={cn("shrink-0 rounded-full p-0.5", isError ? "ring-1 ring-red-400/40" : "")}>
+					<Image
+						src={"/logo.svg"}
+						height={28}
+						width={28}
+						alt="V0"
+						className="invert dark:invert-0"
+					/>
+				</div>
+				<span className="text-sm font-semibold">V0</span>
+				<span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 sm:opacity-60">
+					{format(new Date(createdAt), "HH:mm · MMM dd")}
 				</span>
 			</div>
-			<div className="pl-8 flex flex-col gap-y-4">
-				<span>{content}</span>
+			<div className={cn("pl-8 flex flex-col gap-y-3", isError && "border-l-2 border-red-400/50 ml-2")}>
+				<span className="text-sm leading-relaxed">{content}</span>
 				{fragment && type === MessageType.RESULT && (
 					<FragmentCard
 						fragment={fragment}
@@ -112,7 +115,7 @@ function MessageCard({ content, role, fragment, createdAt, isActiveFragment, onF
 	}
 
 	return (
-		<div className="mt-5">
+		<div className="mt-4">
 			<UserMessage content={content} />
 		</div>
 	);

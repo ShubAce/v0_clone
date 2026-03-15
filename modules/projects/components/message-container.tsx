@@ -6,9 +6,13 @@ import MessageCard from "./message-card";
 import { MessageRole } from "@/src/generated/enums";
 import MessageForm from "./message-form";
 import MessageLoader from "./message-loader";
+import { SparklesIcon } from "lucide-react";
 
 type FragmentLike = {
 	id: string;
+	title?: string;
+	sandboxUrl?: string | null;
+	files?: unknown;
 } | null;
 
 type MessageContainerProps = {
@@ -45,22 +49,32 @@ function MessageContainer({ projectId, activeFragment, setActiveFragment }: Mess
 
 	if (isPending) {
 		return (
-			<div className="flex items-center justify-center h-full">
-				<Spinner className={"text-emerald-600"} />
+			<div className="flex items-center justify-center h-full bg-background/50">
+				<Spinner className={"text-primary"} />
 			</div>
 		);
 	}
 	if (isError) {
-		return <div className="flex items-center justify-center h-full text-red-500">Error: {error?.message || "Failed to load messages."}</div>;
+		return <div className="flex items-center justify-center h-full text-red-500 bg-background/50">Error: {error?.message || "Failed to load messages."}</div>;
 	}
 
 	if (!messages || messages.length === 0) {
 		return (
-			<div className="flex flex-col flex-1 min-h-0">
-				<div className="flex flex-1 items-center justify-center text-muted-foreground">No messages to display.</div>
-				<div className="relative p-3 pt-1">
-					<div className="absolute -top-6 left-0 right-0 h-6 bg-linear-to-b from-transparent to-background pointer-events-none" />
-					{/*input for new message*/}
+			<div className="flex flex-col flex-1 min-h-0 bg-background/30">
+				<div className="flex flex-1 items-center justify-center text-muted-foreground p-4">
+					<div className="flex flex-col items-center gap-4 text-center max-w-sm">
+						<div className="size-16 rounded-full bg-muted/80 flex items-center justify-center shadow-sm">
+							<SparklesIcon className="size-8 text-primary/60" />
+						</div>
+						<div className="space-y-1">
+							<p className="text-base font-medium text-foreground">What do you want to build?</p>
+							<p className="text-sm">Describe the UI component or page you have in mind to get started.</p>
+						</div>
+					</div>
+				</div>
+				<div className="relative p-3 pt-2 w-full max-w-3xl mx-auto">
+					<div className="absolute -top-10 left-0 right-0 h-10 bg-gradient-to-b from-transparent to-sidebar/20 pointer-events-none" />
+					<MessageForm projectId={projectId} />
 				</div>
 			</div>
 		);
@@ -70,25 +84,26 @@ function MessageContainer({ projectId, activeFragment, setActiveFragment }: Mess
 	const isLastMessageUser = lastMessage.role === MessageRole.USER;
 
 	return (
-		<div className="flex flex-col flex-1 min-h-0">
-			<div className="flex-1 min-h-0 overflow-y-auto">
-				{messages.map((message) => (
-					<MessageCard
-						key={message.id}
-						content={message.content}
-						role={message.role}
-						fragment={message.fragment}
-						createdAt={message.createdAt}
-						isActiveFragment={activeFragment?.id === message.fragment?.id}
-						onFragmentClick={() => setActiveFragment(message.fragment)}
-						type={message.type}
-					/>
-				))}
-				{isLastMessageUser && <MessageLoader />}
-				<div ref={bottomRef} />
+		<div className="flex flex-col flex-1 min-h-0 bg-background/30 relative">
+			<div className="flex-1 min-h-0 overflow-y-auto scroll-smooth">
+				<div className="flex flex-col gap-2 w-full max-w-3xl mx-auto px-2 sm:px-4 py-4 pb-8">
+					{messages.map((message) => (
+						<MessageCard
+							key={message.id}
+							content={message.content}
+							role={message.role}
+							fragment={message.fragment}
+							createdAt={message.createdAt}
+							isActiveFragment={activeFragment?.id === message.fragment?.id}
+							onFragmentClick={() => setActiveFragment(message.fragment)}
+							type={message.type}
+						/>
+					))}
+					{isLastMessageUser && <MessageLoader />}
+					<div ref={bottomRef} className="h-4" />
+				</div>
 			</div>
-			<div className="relative p-2 pt-1">
-				<div className="absolute -top-6 left-0 right-0 h-6 bg-linear-to-b from-transparent to-background pointer-events-none" />
+			<div className="relative p-3 pt-2 w-full max-w-4xl mx-auto bg-background/80 backdrop-blur-md border-t border-border/40">
 				<MessageForm projectId={projectId} />
 			</div>
 		</div>
