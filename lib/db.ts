@@ -12,7 +12,11 @@ const pool = new Pool({ connectionString });
 // @ts-ignore
 const adapter = new PrismaPg(pool);
 
-const db = globalThis.prisma || new PrismaClient({ adapter });
+const hasProjectDelegate = (client: PrismaClient | undefined): client is PrismaClient => {
+	return Boolean(client && (client as PrismaClient & { project?: unknown }).project);
+};
+
+const db = hasProjectDelegate(globalThis.prisma) ? globalThis.prisma : new PrismaClient({ adapter });
 
 if (process.env.NODE_ENV !== "production") globalThis.prisma = db;
 
