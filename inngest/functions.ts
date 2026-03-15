@@ -4,13 +4,17 @@ import Sandbox from "@e2b/code-interpreter";
 import z from "zod";
 import { PROMPT } from "@/prompt";
 import { lastAssistantTextMessageContent } from "./utils";
+import { isError } from "util";
+import db from "@/lib/db";
+import { MessageRole, MessageType } from "@/src/generated/enums";
+import { title } from "process";
 
 export const codeAgentFunction = inngest.createFunction(
 	{ id: "code-agent" },
 	{ event: "agent-code/run" },
 
 	async ({ event, step }) => {
-		//step 1: create a sandbox and get the sandbox id
+		// Step 1: create sandbox and get its ID
 		const sandboxId = await step.run("get-sandbox-id", async () => {
 			const sandbox = await Sandbox.create("shubhamsuman2005/we-build");
 			return sandbox.sandboxId;
@@ -21,22 +25,27 @@ export const codeAgentFunction = inngest.createFunction(
 			description: "An expert coding Agent that can write and execute code in a sandbox environment.",
 			system: PROMPT,
 			model: gemini({
-				model: "gemini-2.5-flash",
+				model: "gemini-2.5-flash", // use a verified stable model ID
+				defaultParameters: {
+					generationConfig: {
+						temperature: 0.2,
+					},
+				},
 			}),
 			tools: [
-				//terminal
+				// ─── terminal ─────────────────────────────────────────────────────────
 				createTool({
 					name: "terminal",
 					description: "Use the terminal to run commands",
 					parameters: z.object({
 						command: z.string(),
 					}),
-					handler: async ({ command }, { step }) => {
-						return await step?.run("terminal", async () => {
-							const buffers = {
-								stdout: "",
-								stderr: "",
-							};
+					// Use the outer `step` from inngest.createFunction — NOT the one
+					// destructured from the tool handler context (that one can be undefined).
+					handler: async ({ command }) => {
+						return await step.run("terminal", async () => {
+							const buffers = { stdout: "", stderr: "" };
+
 							try {
 								const sandbox = await Sandbox.connect(sandboxId);
 								const safeCommand = `export PNPM_STORE_DIR=/pnpm/store; pnpm config set store-dir /pnpm/store --global >/dev/null 2>&1 || true; ${command}`;
@@ -52,6 +61,7 @@ export const codeAgentFunction = inngest.createFunction(
 								});
 
 								const combinedOutput = `${result.stdout || ""}\n${result.stderr || ""}`;
+
 								if (combinedOutput.includes("ERR_PNPM_UNEXPECTED_STORE")) {
 									buffers.stdout = "";
 									buffers.stderr = "";
@@ -66,18 +76,21 @@ export const codeAgentFunction = inngest.createFunction(
 										},
 									});
 								}
-								return result.stdout;
+
+								// stdout can be empty even on success — fall back to buffer
+								return result.stdout || buffers.stdout || "(no output)";
 							} catch (err) {
-								console.log(`Command failed: ${err}\n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`);
-								return `Command failed: ${err}\n stdout: ${buffers.stdout}\n stderr: ${buffers.stderr}`;
+								console.error(`Command failed: ${err}`);
+								return `Command failed: ${err}\nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
 							}
 						});
 					},
 				}),
-				//creteorupdate
+
+				// ─── createOrUpdateFiles ───────────────────────────────────────────────
 				createTool({
 					name: "createOrUpdateFiles",
-					description: "Create or update a file in the sandbox. If the file already exists, it will be updated with the new content.",
+					description: "Create or update files in the sandbox. If a file already exists it will be overwritten.",
 					parameters: z.object({
 						files: z.array(
 							z.object({
@@ -86,69 +99,80 @@ export const codeAgentFunction = inngest.createFunction(
 							}),
 						),
 					}),
-					handler: async ({ files }, { step, network }) => {
-						const newFiles = await step?.run("createOrUpdateFiles", async () => {
+					handler: async ({ files }, { network }) => {
+						const updatedFiles = await step.run("createOrUpdateFiles", async () => {
 							try {
-								const updatedFiles = network?.state?.data.files || {};
+								// Guard: network.state.data may not be initialised yet
+								const existingFiles: Record<string, string> = (network?.state?.data?.files as Record<string, string>) ?? {};
 
 								const sandbox = await Sandbox.connect(sandboxId);
 
+								// Write every requested file
 								for (const file of files) {
-									await sandbox.files.write(file.path, file.content);
-									updatedFiles[file.path] = file.content;
+									const absolutePath = file.path.startsWith("/") ? file.path : `/home/user/${file.path}`;
+									await sandbox.files.write(absolutePath, file.content);
+									existingFiles[file.path] = file.content;
 								}
-								return updatedFiles;
+
+								return existingFiles;
 							} catch (err) {
-								console.log(`Failed to create or update file: ${err}`);
-								return {
-									error: `Failed to create or update file: ${err}`,
-								};
+								console.error(`Failed to create or update files: ${err}`);
+								return null;
 							}
 						});
-						if (typeof newFiles === "object") {
-							network.state.data.files = newFiles;
+
+						// Persist updated file map back into network state
+						if (updatedFiles && network) {
+							if (!network.state.data) network.state.data = {};
+							network.state.data.files = updatedFiles;
 						}
+
+						// Always return a string — models need a result to continue reasoning
+						return updatedFiles
+							? `Successfully wrote ${files.length} file(s): ${files.map((f) => f.path).join(", ")}`
+							: "Error: failed to write one or more files.";
 					},
 				}),
 
-				//readfiles
+				// ─── readFiles ─────────────────────────────────────────────────────────
 				createTool({
 					name: "readFiles",
 					description: "Read files from the sandbox.",
 					parameters: z.object({
 						files: z.array(z.string()),
 					}),
-					handler: async ({ files }, { step }) => {
-						return await step?.run("readFiles", async () => {
+					handler: async ({ files }) => {
+						return await step.run("readFiles", async () => {
 							try {
 								const sandbox = await Sandbox.connect(sandboxId);
-								const contents = [];
+								const contents: { path: string; content: string }[] = [];
 
 								for (const file of files) {
 									const content = await sandbox.files.read(file);
-									contents.push({
-										path: file,
-										content,
-									});
+									contents.push({ path: file, content });
 								}
+
 								return JSON.stringify(contents);
 							} catch (err) {
-								console.log(`Failed to read files: ${err}`);
-								return "Error" + `Failed to read files: ${err}`;
+								console.error(`Failed to read files: ${err}`);
+								return `Error: Failed to read files: ${err}`;
 							}
 						});
 					},
 				}),
 			],
+
 			lifecycle: {
 				onResponse: async ({ result, network }) => {
 					const lastAssistantMessageText = lastAssistantTextMessageContent(result);
 
 					if (lastAssistantMessageText && network) {
 						if (lastAssistantMessageText.includes("<task_summary>")) {
+							if (!network.state.data) network.state.data = {};
 							network.state.data.summary = lastAssistantMessageText;
 						}
 					}
+
 					return result;
 				},
 			},
@@ -159,29 +183,57 @@ export const codeAgentFunction = inngest.createFunction(
 			agents: [codeAgent],
 			maxIter: 10,
 			router: async ({ network }) => {
-				const summary = network.state.data.summary || "";
-				if (summary) {
-					return;
-				}
+				const summary = (network.state.data?.summary as string) || "";
+				if (summary) return; // done — no next agent
 				return codeAgent;
 			},
 		});
 
-		const result = await network.run(event.data.value);
+		// First run
+		let result = await network.run(event.data.value);
+
+		const hasSummary = Boolean(result.state.data?.summary);
+		const hasFiles = Object.keys((result.state.data?.files as object) || {}).length > 0;
 		const isError = !result.state.data.summary || Object.keys(result.state.data.files || {}).length === 0;
 
 		const sandboxUrl = await step.run("get-sandbox-url", async () => {
 			const sandbox = await Sandbox.connect(sandboxId);
-			const host = sandbox.getHost(3000);
+			return `http://${sandbox.getHost(3000)}`;
+		});
 
-			return `http://${host}`;
+		await step.run("save-result", async () => {
+			if (isError) {
+				return await db.message.create({
+					data: {
+						projectId: event.data.projectId,
+						content: "Something went wrong. Please try again.",
+						role: MessageRole.ASSISTANT,
+						type: MessageType.ERROR,
+					},
+				});
+			}
+			return await db.message.create({
+				data: {
+					projectId: event.data.projectId,
+					content: result.state.data.summary,
+					role: MessageRole.ASSISTANT,
+					type: MessageType.RESULT,
+					fragment: {
+						create: {
+							sandboxUrl: sandboxUrl,
+							title: "Untitled",
+							files: result.state.data.files,
+						},
+					},
+				},
+			});
 		});
 
 		return {
 			url: sandboxUrl,
 			title: "Untitled",
-			files: result.state.data.files,
-			summary: result.state.data.summary || "No summary available",
+			files: result.state.data?.files ?? {},
+			summary: (result.state.data?.summary as string) || "No summary available",
 		};
 	},
 );

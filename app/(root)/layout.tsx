@@ -7,7 +7,7 @@ async function Layout({ children }: { children: React.ReactNode }) {
 	await onBoardUser();
 	return (
 		<main className="flex flex-col min-h-screen relative overflow-x-hidden ">
-			<Navbar />
+			
 			<div
 				className="fixed inset-0 z-0 
 			bg-background 

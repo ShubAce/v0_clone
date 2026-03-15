@@ -14,6 +14,8 @@ import { Form, FormField } from "@/components/ui/form";
 import React from "react";
 import { ArrowUpIcon, Loader2Icon } from "lucide-react";
 import { onInvoke } from "../actions";
+import { Spinner } from "@/components/ui/spinner";
+import { useCreateProject } from "@/modules/projects/hooks/project";
 
 const formSchema = z.object({
 	content: z.string().min(1, "Project Description is Required").max(1000, "Description too long"),
@@ -64,47 +66,44 @@ const PROJECT_TEMPLATES = [
 
 const ProjectForm = () => {
 	const [isFocused, setIsFocused] = useState(false);
+
+	const { mutateAsync, isPending } = useCreateProject();
+
 	const router = useRouter();
 	const form = useForm({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
 			content: "",
 		},
+		mode: "onChange",
 	});
 	const handleTemplate = (prompt: string) => {
 		form.setValue("content", prompt);
 	};
 
-	const onSubmit = (values: z.infer<typeof formSchema>) => {
+	const onSubmit = async (values: z.infer<typeof formSchema>) => {
 		try {
-			console.log(values);
+			const res = await mutateAsync(values.content);
+			router.push(`/project/${res.id}`);
+			toast.success("Project created successfully!");
+			form.reset();
 		} catch (error) {
 			toast.error("Failed to create project. Please try again.");
+			console.error("Error creating project:", error);
 		}
 	};
 
-	const onInvokeAi = async () => { 
-		try {
-			const res = await onInvoke();
-			toast.success("AI agent invoked successfully!");
-			console.log(res);
-		} catch (error) {
-			console.error("Error invoking AI agent:", error);
-			toast.error("Failed to invoke AI agent. Please try again.");
-		}
-		
-	}
+	const isButtonDisabled = isPending || !form.watch("content")?.trim();
 
 	return (
 		<div className="space-y-8">
 			{/* Template Section */}
-			<Button onClick={onInvokeAi}>Invoke ai agent</Button>
 			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 				{PROJECT_TEMPLATES.map((template, index) => (
 					<button
 						key={index}
 						onClick={() => handleTemplate(template.prompt)}
-						// disabled={isPending}
+						disabled={isPending}
 						className="group relative p-4 rounded-xl border bg-card hover:bg-accent/50 transition-all duration-200 text-left disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md hover:border-primary/30"
 					>
 						<div className="flex flex-col gap-2">
@@ -117,7 +116,7 @@ const ProjectForm = () => {
 							</span>
 							<h3 className="text-sm font-medium group-hover:text-primary transition-colors">{template.title}</h3>
 						</div>
-						<div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+						<div className="absolute inset-0 rounded-xl bg-linear-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 					</button>
 				))}
 			</div>
@@ -130,63 +129,56 @@ const ProjectForm = () => {
 				<div className="relative flex justify-center text-xs uppercase">
 					<span className="bg-background px-2 text-muted-foreground">Or describe your own idea</span>
 				</div>
-            </div>
-            
-            {/* Form */}
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className={cn(
-            "relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
-            isFocused && "shadow-lg ring-2 ring-primary/20"
-          )}
-        >
-          <FormField
-            control={form.control}
-            name="content"
-            render={({ field }) => (
-              <TextAreaAutoSize
-                {...field}
-                // disabled={isPending}
-                placeholder="Describe what you want to create..."
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                minRows={3}
-                maxRows={8}
-                className={cn(
-                    "pt-4 resize-none border-none w-full outline-none bg-transparent"
-                //     ,
-                //   isPending && "opacity-50"
-                )}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    form.handleSubmit(onSubmit)(e);
-                  }
-                }}
-              />
-            )}
-          />
-          <div className="flex gap-x-2 items-end justify-between pt-2">
-            <div className="text-[10px] text-muted-foreground font-mono">
-              <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                <span>&#8984;</span>Enter
-              </kbd>
-              &nbsp; to submit
-            </div>
-            <Button
-              className={cn(
-                "size-8 rounded-full"
-              )}
-              type="submit"
-            >
-              
-                <ArrowUpIcon className="size-4" />
-              
-            </Button>
-          </div>
-        </form>
-      </Form>
+			</div>
+
+			{/* Form */}
+			<Form {...form}>
+				<form
+					onSubmit={form.handleSubmit(onSubmit)}
+					className={cn(
+						"relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
+						isFocused && "shadow-lg ring-2 ring-primary/20",
+					)}
+				>
+					<FormField
+						control={form.control}
+						name="content"
+						render={({ field }) => (
+							<TextAreaAutoSize
+								{...field}
+								disabled={isPending}
+								placeholder="Describe what you want to create..."
+								onFocus={() => setIsFocused(true)}
+								onBlur={() => setIsFocused(false)}
+								minRows={3}
+								maxRows={8}
+								className={cn("pt-4 resize-none border-none w-full outline-none bg-transparent", isPending && "opacity-50")}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+										e.preventDefault();
+										form.handleSubmit(onSubmit)(e);
+									}
+								}}
+							/>
+						)}
+					/>
+					<div className="flex gap-x-2 items-end justify-between pt-2">
+						<div className="text-[10px] text-muted-foreground font-mono">
+							<kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+								<span>&#8984;</span>Enter
+							</kbd>
+							&nbsp; to submit
+						</div>
+						<Button
+							className={cn("size-8 rounded-full", isButtonDisabled && "bg-muted-foreground border")}
+							type="submit"
+							disabled={isButtonDisabled}
+						>
+							{isPending ? <Spinner /> : <ArrowUpIcon className="size-4" />}
+						</Button>
+					</div>
+				</form>
+			</Form>
 		</div>
 	);
 };
