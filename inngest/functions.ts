@@ -17,6 +17,44 @@ Use native tool calls only with strict JSON arguments matching the tool schemas.
 Do not output pseudo tool calls as text.`;
 };
 
+const TEXT_EXTENSIONS = new Set([
+	"js",
+	"jsx",
+	"ts",
+	"tsx",
+	"json",
+	"md",
+	"html",
+	"css",
+	"scss",
+	"sass",
+	"mjs",
+	"cjs",
+	"yml",
+	"yaml",
+	"toml",
+	"txt",
+	"env",
+	"gitignore",
+	"npmrc",
+	"sh",
+	"sql",
+	"prisma",
+]);
+
+const shouldReadAsText = (relativePath: string) => {
+	const fileName = relativePath.split("/").pop() ?? "";
+	if (!fileName) return false;
+
+	if (fileName.startsWith(".")) {
+		const hiddenName = fileName.slice(1).toLowerCase();
+		return hiddenName === "env" || hiddenName === "gitignore" || hiddenName === "npmrc";
+	}
+
+	const extension = fileName.includes(".") ? (fileName.split(".").pop()?.toLowerCase() ?? "") : "";
+	return TEXT_EXTENSIONS.has(extension);
+};
+
 export const codeAgentFunction = inngest.createFunction(
 	{ id: "code-agent" },
 	{ event: "agent-code/run" },
@@ -199,7 +237,8 @@ export const codeAgentFunction = inngest.createFunction(
 
 		// First run
 		let result = await network.run(event.data.value);
-
+		console.log("=== DEBUG: hasSummary ===", Boolean(result.state.data?.summary));
+		console.log("=== DEBUG: hasFiles ===", Object.keys((result.state.data?.files as object) || {}).length);
 		let hasSummary = Boolean(result.state.data?.summary);
 		let hasFiles = Object.keys((result.state.data?.files as object) || {}).length > 0;
 
@@ -209,12 +248,71 @@ export const codeAgentFunction = inngest.createFunction(
 			hasFiles = Object.keys((result.state.data?.files as object) || {}).length > 0;
 		}
 
-		const isError = !hasSummary || !hasFiles;
+		const fallbackSummary = lastAssistantTextMessageContent(result);
 
 		const sandboxUrl = await step.run("get-sandbox-url", async () => {
 			const sandbox = await Sandbox.connect(sandboxId);
 			return `http://${sandbox.getHost(3000)}`;
 		});
+
+		const completeFiles = await step.run("collect-sandbox-files", async () => {
+			try {
+				const sandbox = await Sandbox.connect(sandboxId);
+				const existingFiles = (result.state.data?.files as Record<string, string>) ?? {};
+
+				console.log("=== DEBUG: existingFiles from state ===", JSON.stringify(Object.keys(existingFiles)));
+
+				const mergedFiles: Record<string, string> = { ...existingFiles };
+
+				const listResult = await sandbox.commands.run(
+					`find /home/user -type f \
+            \( -path '/home/user/node_modules/*' -o -path '/home/user/.next/*' -o -path '/home/user/.git/*' -o -path '/home/user/.pnpm-store/*' -o -path '/home/user/.cache/*' -o -path '/home/user/.npm/*' \) -prune -o -type f -print`,
+				);
+
+				console.log("=== DEBUG: find stdout ===", listResult.stdout?.slice(0, 500));
+				console.log("=== DEBUG: find stderr ===", listResult.stderr?.slice(0, 500));
+
+				const absolutePaths = listResult.stdout
+					.split("\n")
+					.map((line) => line.trim())
+					.filter((line) => line.length > 0 && line.startsWith("/home/user/"));
+
+				console.log("=== DEBUG: absolutePaths count ===", absolutePaths.length);
+
+				for (const absolutePath of absolutePaths) {
+					const relativePath = absolutePath.replace("/home/user/", "");
+					if (!relativePath) continue;
+
+					if (relativePath in mergedFiles) continue;
+
+					if (!shouldReadAsText(relativePath)) {
+						mergedFiles[relativePath] = "";
+						continue;
+					}
+
+					try {
+						const content = await sandbox.files.read(absolutePath);
+						mergedFiles[relativePath] = typeof content === "string" ? content : "";
+					} catch {
+						mergedFiles[relativePath] = "";
+					}
+				}
+
+				return mergedFiles;
+			} catch (err) {
+				console.error(`Failed to collect sandbox files: ${err}`);
+				return (result.state.data?.files as Record<string, string>) ?? {};
+			}
+		});
+
+		const finalSummary =
+			typeof result.state.data?.summary === "string" && result.state.data.summary.trim().length > 0
+				? result.state.data.summary
+				: typeof fallbackSummary === "string" && fallbackSummary.trim().length > 0
+					? fallbackSummary
+					: "No summary available";
+
+		const isError = Object.keys(completeFiles).length === 0;
 
 		await step.run("save-result", async () => {
 			if (isError) {
@@ -230,14 +328,14 @@ export const codeAgentFunction = inngest.createFunction(
 			return await db.message.create({
 				data: {
 					projectId: event.data.projectId,
-					content: result.state.data.summary,
+					content: finalSummary,
 					role: MessageRole.ASSISTANT,
 					type: MessageType.RESULT,
 					fragment: {
 						create: {
 							sandboxUrl: sandboxUrl,
 							title: "Untitled",
-							files: result.state.data.files,
+							files: completeFiles,
 						},
 					},
 				},
@@ -247,8 +345,8 @@ export const codeAgentFunction = inngest.createFunction(
 		return {
 			url: sandboxUrl,
 			title: "Untitled",
-			files: result.state.data?.files ?? {},
-			summary: (result.state.data?.summary as string) || "No summary available",
+			files: completeFiles,
+			summary: finalSummary,
 		};
 	},
 );
